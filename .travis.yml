@@ -9,6 +9,15 @@ matrix:
       dist: xenial
       sudo: true
 
+deploy:
+  provider: pypi
+  user: jnesselr
+  password:
+    secure: ebVgk2itQuCWHoMipzJXu5eIgTUNn5ynagqEdrXPaDDwsrL1LTo1pqn+6mDzBi2RgNGqdeWpryFNEO2vNmIif1hXTxzWKFbpw/fw2AaFBP80zvUgWMkasPsxVvknehR1Rh29M8QEDRJkyM0NfMKxRjVz8aSzyym/3d91ItzDTjbg8+yhwG2Fglx6fctSh4TC6slwoyARRjthARJ+V28hTbFnqqUOwr9Q/MhGYfXVb1Yf+n8pkUGSD/Gc/xprod/A5UB8F6VuZam8yzlQKO7Zp+2Hiau5NVDmL6z7sqdrdacvQwNGuoq9sRB5IK7Ysu5BwwszxGHx4wyTKPVl1hLmFUrGk3KO9WKPIyjkJMGQGlhfIFWBsSzCIMkKwYHI7chVqxe9YUB8ScN0LL6Go77jTPlC9EG10KpfcYG/CdXbCgc0dWUHTGvh2uJIdTi7sbLG1FbNevsEXHU0/+iI23vtNEwAVC6rhtJF4pR9Ndb7ddHFiGRWm/GHa8QWWKdfhp56g8VNetJyORsqWaWWDw8425WoXTlJL7Qw4yayCKoqnHFbP2WvnVipfYIh1WyegW7H10T/WjqbHnTROcdwCgKzU54ThOELGahGANyXIwp3mp972vaRDynAyzjrWaC6Pk9HbqNR8Bs4RGKLF9M4fJhSEeaBbywqPu7zbPat9Fxs8Ew=
+  on:
+    tags: true
+  skip_existing: true
+
 install:
   - python setup.py install
 

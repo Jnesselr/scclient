@@ -12,7 +12,7 @@ def read(file_name):
 
 setup(
     name="scclient",
-    version="0.0.3",
+    version="0.0.4",
     author="Justin Nesselrotte",
     author_email="admin@jnesselr.org",
     description="A SocketCluster compatible WebSocket library",
@@ -31,5 +31,8 @@ setup(
         "pytest>=4.4.0",
         "pytest-cov",
         "codacy-coverage",
+        "setuptools",
+        "wheel",
+        "twine",
     ],
 )
