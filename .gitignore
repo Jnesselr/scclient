@@ -3,6 +3,7 @@ venv/
 build/
 __pycache__/
 .eggs/
+dist/
 
 *.egg-info
 *.swp

@@ -25,9 +25,8 @@ setup(
         "License :: OSI Approved :: BSD License",
     ],
     install_requires=[
-        "websocket-client<1.0"
-    ],
-    tests_require=[
+        "websocket-client<1.0",
+
         "pytest",
         "pytest-cov",
         "codacy-coverage",
