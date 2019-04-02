@@ -307,6 +307,33 @@ class TestSocketClient(object):
         callback.assert_called_once_with(my_event_name, error_text, data_text)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_emitting_event_without_callback_does_not_fail_or_call_different_callback(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        callback = MagicMock()
+        my_event_name = "my_event"
+        my_event_data = {}
+
+        client.emit(my_event_name, my_event_data, callback)
+
+        error_text = "This is an error"
+        data_text = "This is some data"
+        response_payload = {
+            "rid": 9001,  # No callback should be assigned to this number
+            "error": error_text,
+            "data": data_text,
+        }
+
+        client._internal_on_message(ws, json.dumps(response_payload))
+
+        callback.assert_not_called()
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
     def test_emit_increments_cid(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws

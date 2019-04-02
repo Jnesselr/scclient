@@ -190,7 +190,7 @@ class SocketClient(object):
             return
 
         message_object = json.loads(message)
-        if "rid" in message_object:
+        if "rid" in message_object and message_object["rid"] in self._callbacks:
             callback_tuple = self._callbacks[message_object["rid"]]
             name = callback_tuple[0]  # Either the event or channel name
             callback = callback_tuple[1]
