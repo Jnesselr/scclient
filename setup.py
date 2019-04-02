@@ -12,7 +12,7 @@ def read(file_name):
 
 setup(
     name="scclient",
-    version="0.1.0",
+    version="0.2.0",
     author="Justin Nesselrotte",
     author_email="admin@jnesselr.org",
     description="A SocketCluster compatible WebSocket library",
