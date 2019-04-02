@@ -24,7 +24,10 @@ class SocketClient(object):
         self._id = None
         self._auth_token = None
 
-        self._callbacks = {}
+        self._event_based_callbacks = {}
+        self._event_based_callback_lock = Lock()
+
+        self._id_based_callbacks = {}
         self._on_connect_event = EventListener()
         self._on_disconnect_event = EventListener()
 
@@ -84,9 +87,16 @@ class SocketClient(object):
             cid = self._get_next_cid()
             payload["cid"] = cid
 
-            self._callbacks[cid] = (event, callback)
+            self._id_based_callbacks[cid] = (event, callback)
 
         self._ws.send(json.dumps(payload, sort_keys=True))
+
+    def on(self, event, callback):
+        with self._event_based_callback_lock:
+            if event not in self._event_based_callbacks:
+                self._event_based_callbacks[event] = set()
+
+            self._event_based_callbacks[event].add(callback)
 
     def publish(self, channel, data, callback=None):
         cid = self._get_next_cid()
@@ -98,7 +108,7 @@ class SocketClient(object):
         }
 
         if callback is not None:
-            self._callbacks[cid] = (channel, callback)
+            self._id_based_callbacks[cid] = (channel, callback)
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
@@ -169,7 +179,7 @@ class SocketClient(object):
             "cid": cid,
         }
 
-        self._callbacks[cid] = (handshake_event_name, self._internal_handshake_response)
+        self._id_based_callbacks[cid] = (handshake_event_name, self._internal_handshake_response)
         ws.send(json.dumps(handshake_object, sort_keys=True))
 
     def _internal_handshake_response(self, event_name, error, response):
@@ -190,8 +200,8 @@ class SocketClient(object):
             return
 
         message_object = json.loads(message)
-        if "rid" in message_object and message_object["rid"] in self._callbacks:
-            callback_tuple = self._callbacks[message_object["rid"]]
+        if "rid" in message_object and message_object["rid"] in self._id_based_callbacks:
+            callback_tuple = self._id_based_callbacks[message_object["rid"]]
             name = callback_tuple[0]  # Either the event or channel name
             callback = callback_tuple[1]
 
@@ -202,10 +212,16 @@ class SocketClient(object):
         if "event" not in message_object:
             return
 
-        if message_object["event"] == "#publish":
+        event_name = message_object["event"]
+        message_data = message_object["data"] if "data" in message_object else None
+
+        if event_name == "#publish":
             channel = message_object["channel"]
-            data = message_object["data"]
 
             subscriptions = self._subscriptions[channel] if channel in self._subscriptions else set()
             for subscription in subscriptions:
-                subscription(channel, data)
+                subscription(channel, message_data)
+
+        if event_name in self._event_based_callbacks:
+            for callback in self._event_based_callbacks[event_name]:
+                callback(event_name, message_data)

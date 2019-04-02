@@ -334,6 +334,33 @@ class TestSocketClient(object):
         callback.assert_not_called()
 
     @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_emit_calls_on_handler(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_event_name = "some_random_event"
+        client.on(my_event_name, callback)
+
+        callback.assert_not_called()
+
+        my_event_data = {
+            "key": "value",
+        }
+        payload = {
+            "event": my_event_name,
+            "data": my_event_data,
+            "cid": 1,
+        }
+
+        client._internal_on_message(ws, json.dumps(payload, sort_keys=True))
+
+        callback.assert_called_once_with(my_event_name, my_event_data)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
     def test_emit_increments_cid(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws
