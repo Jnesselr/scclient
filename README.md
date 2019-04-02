@@ -8,7 +8,7 @@ scclient is a python [SocketCluster](https://socketcluster.io/) client implement
 
 ## Goals
 
-* Comprehensive unit testing
-* [PEP 8](https://www.python.org/dev/peps/pep-0008/) style
-* Full SocketCluster client implementation
-* Non-blocking event driven architecture
+  * Comprehensive unit testing
+  * [PEP 8](https://www.python.org/dev/peps/pep-0008/) style
+  * Full SocketCluster client implementation
+  * Non-blocking event driven architecture
