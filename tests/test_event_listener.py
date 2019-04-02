@@ -58,3 +58,13 @@ class TestEventListener(object):
         event_listener("event")
 
         callback.assert_called_once_with("event")
+
+    def test_emitting_multiple_arguments(self):
+        callback = MagicMock()
+
+        event_listener = EventListener()
+        event_listener.listener.add(callback)
+
+        event_listener("event", "other stuff")
+
+        callback.assert_called_once_with("event", "other stuff")

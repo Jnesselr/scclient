@@ -30,6 +30,8 @@ class SocketClient(object):
         self._id_based_callbacks = {}
         self._on_connect_event = EventListener()
         self._on_disconnect_event = EventListener()
+        self._on_subscribe_event = EventListener()
+        self._on_unsubscribe_event = EventListener()
 
         self._reconnect_enabled = bool(reconnect_enabled)
         self._reconnect_delay = float(reconnect_delay)
@@ -64,6 +66,14 @@ class SocketClient(object):
     @property
     def on_disconnect(self):
         return self._on_disconnect_event.listener
+
+    @property
+    def on_subscribe(self):
+        return self._on_subscribe_event.listener
+
+    @property
+    def on_unsubscribe(self):
+        return self._on_unsubscribe_event.listener
 
     def connect(self):
         if self._ws_thread is not None and self._ws_thread.is_alive():
@@ -132,6 +142,8 @@ class SocketClient(object):
 
             self._ws.send(json.dumps(payload, sort_keys=True))
 
+            self._on_subscribe_event(self, channel)
+
     def unsubscribe(self, channel, callback):
         send_unsubscribe_payload = False
 
@@ -151,6 +163,8 @@ class SocketClient(object):
             }
 
             self._ws.send(json.dumps(payload, sort_keys=True))
+
+            self._on_unsubscribe_event(self, channel)
 
     def _get_next_cid(self):
         with self._cid_lock:

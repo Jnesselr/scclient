@@ -756,3 +756,76 @@ class TestSocketClient(object):
             call(json.dumps(unsubscribe_payload, sort_keys=True)),
             call(json.dumps(subscribe_payload, sort_keys=True)),
         ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_subscribing_calls_on_subscribe(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_subscribe_callback = MagicMock()
+        client.on_subscribe(on_subscribe_callback)
+
+        on_subscribe_callback.assert_not_called()
+
+        channel_name = "test-channel"
+        client.subscribe(channel_name, MagicMock())
+
+        on_subscribe_callback.assert_called_once_with(client, channel_name)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_calls_on_unsubscribe(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_unsubscribe_callback = MagicMock()
+        client.on_unsubscribe(on_unsubscribe_callback)
+
+        on_unsubscribe_callback.assert_not_called()
+
+        channel_name = "test-channel"
+        callback = MagicMock()
+        client.subscribe(channel_name, callback)
+        client.unsubscribe(channel_name, callback)
+
+        on_unsubscribe_callback.assert_called_once_with(client, channel_name)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_subscribing_calls_on_subscribe_only_for_first_event(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_subscribe_callback = MagicMock()
+        client.on_subscribe(on_subscribe_callback)
+
+        on_subscribe_callback.assert_not_called()
+
+        channel_name = "test-channel"
+        client.subscribe(channel_name, MagicMock())
+        client.subscribe(channel_name, MagicMock())
+
+        on_subscribe_callback.assert_called_once_with(client, channel_name)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_calls_on_unsubscribe_only_after_last_event(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_unsubscribe_callback = MagicMock()
+        client.on_unsubscribe(on_unsubscribe_callback)
+
+        on_unsubscribe_callback.assert_not_called()
+
+        channel_name = "test-channel"
+        callback_1 = MagicMock()
+        callback_2 = MagicMock()
+
+        client.subscribe(channel_name, callback_1)
+        client.subscribe(channel_name, callback_2)
+        client.unsubscribe(channel_name, callback_1)
+        client.unsubscribe(channel_name, callback_2)
+
+        on_unsubscribe_callback.assert_called_once_with(client, channel_name)

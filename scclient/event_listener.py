@@ -24,9 +24,9 @@ class EventListener(object):
     def listener(self):
         return self._listener
 
-    def emit(self, event):
+    def emit(self, *args):
         for callback in self._callbacks:
-            callback(event)
+            callback(*args)
 
-    def __call__(self, event):
-        self.emit(event)
+    def __call__(self, *args):
+        self.emit(*args)
