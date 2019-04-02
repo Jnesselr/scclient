@@ -1,7 +1,9 @@
 import json
+from threading import Event
 from unittest import mock
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, call
 
+import pytest
 from websocket import WebSocketApp
 
 from scclient import SocketClient
@@ -244,3 +246,65 @@ class TestSocketClient(object):
         client._internal_on_message(ws, json.dumps(response_payload))
 
         callback.assert_called_once_with(my_event_name, error_text, data_text)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_reconnect_defaults(self, socket_app):
+        client = SocketClient("test_url")
+
+        assert not client.reconnect_enabled
+        assert client.reconnect_delay == 2
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_reconnect_kwargs(self, socket_app):
+        client = SocketClient("test_url",
+                              reconnect_enabled=True,
+                              reconnect_delay=5)
+
+        assert client.reconnect_enabled
+        assert client.reconnect_delay == 5
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    @mock.patch('scclient.socket_client.time')
+    def test_reconnect_is_called_until_it_is_disabled(self, time_patch, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url",
+                              reconnect_enabled=True,
+                              reconnect_delay=0.001)
+
+        count = 0
+        reconnect_disabled_event = Event()
+
+        def run_forever_side_effect():
+            nonlocal client
+            nonlocal count
+            nonlocal reconnect_disabled_event
+            count = count + 1
+            if count == 5:
+                client.reconnect_enabled = False
+                reconnect_disabled_event.set()
+            if count >= 6:
+                pytest.fail("This function should not have been called this many times! Is reconnect_enabled being "
+                            "checked?")
+
+        ws.run_forever.side_effect = run_forever_side_effect
+
+        client.connect()
+
+        reconnect_disabled_event.wait(0.5)
+        assert reconnect_disabled_event.is_set()
+
+        assert not client.reconnect_enabled
+        time_patch.sleep.assert_has_calls([call(client.reconnect_delay)] * 4)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_disconnecting_manually_disables_reconnects(self, socket_app):
+        client = SocketClient("test_url",
+                              reconnect_enabled=True)
+
+        assert client.reconnect_enabled
+
+        client.disconnect()
+
+        assert not client.reconnect_enabled

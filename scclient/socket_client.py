@@ -1,4 +1,5 @@
 import json
+import time
 from threading import Lock, Thread
 
 from websocket import WebSocketApp
@@ -7,7 +8,9 @@ from scclient.event_listener import EventListener
 
 
 class SocketClient(object):
-    def __init__(self, url):
+    def __init__(self, url,
+                 reconnect_enabled=False,
+                 reconnect_delay=2):
         self._ws = WebSocketApp(url,
                                 on_open=self._internal_on_open,
                                 on_close=self._internal_on_close,
@@ -25,6 +28,9 @@ class SocketClient(object):
         self._on_connect_event = EventListener()
         self._on_disconnect_event = EventListener()
 
+        self._reconnect_enabled = bool(reconnect_enabled)
+        self._reconnect_delay = float(reconnect_delay)
+
     @property
     def id(self):
         return self._id
@@ -32,6 +38,18 @@ class SocketClient(object):
     @property
     def connected(self):
         return self._ws_connected
+
+    @property
+    def reconnect_enabled(self):
+        return self._reconnect_enabled
+
+    @reconnect_enabled.setter
+    def reconnect_enabled(self, enabled):
+        self._reconnect_enabled = bool(enabled)
+
+    @property
+    def reconnect_delay(self):
+        return self._reconnect_delay
 
     @property
     def on_connect(self):
@@ -42,10 +60,11 @@ class SocketClient(object):
         return self._on_disconnect_event.listener
 
     def connect(self):
-        self._ws_thread = Thread(target=self._ws.run_forever, daemon=True)
+        self._ws_thread = Thread(target=self._ws_thread_run, daemon=True)
         self._ws_thread.start()
 
     def disconnect(self):
+        self.reconnect_enabled = False
         # This causes the _ws_thread to stop on its own
         self._ws.close()
 
@@ -67,6 +86,14 @@ class SocketClient(object):
         with self._cid_lock:
             self._cid += 1
             return self._cid
+
+    def _ws_thread_run(self):
+        while True:
+            self._ws.run_forever()
+            if self.reconnect_enabled:
+                time.sleep(self.reconnect_delay)
+            else:
+                break
 
     def _internal_on_open(self, ws: WebSocketApp):
         cid = self._get_next_cid()
