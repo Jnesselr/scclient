@@ -1,5 +1,5 @@
 import json
-from threading import Event
+from threading import Event, Thread
 from unittest import mock
 from unittest.mock import Mock, MagicMock, call
 
@@ -34,6 +34,38 @@ class TestSocketClient(object):
         client.connect()
         client._ws_thread.join(0.001)
 
+        ws.run_forever.assert_called_once_with()
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_connect_does_not_create_new_thread_if_existing_one_is_alive(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws_thread = Mock(Thread)
+        ws_thread.is_alive.return_value = True
+        client._ws_thread = ws_thread
+
+        client.connect()
+
+        assert client._ws_thread is ws_thread
+        client._ws_thread.start.assert_not_called()
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_connect_does_create_new_thread_if_existing_one_is_dead(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws_thread = Mock(Thread)
+        ws_thread.is_alive.return_value = False
+        client._ws_thread = ws_thread
+
+        client.connect()
+
+        assert client._ws_thread is not ws_thread
         ws.run_forever.assert_called_once_with()
 
     @mock.patch('scclient.socket_client.WebSocketApp')

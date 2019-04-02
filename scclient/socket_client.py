@@ -60,6 +60,9 @@ class SocketClient(object):
         return self._on_disconnect_event.listener
 
     def connect(self):
+        if self._ws_thread is not None and self._ws_thread.is_alive():
+            return
+
         self._ws_thread = Thread(target=self._ws_thread_run, daemon=True)
         self._ws_thread.start()
 
