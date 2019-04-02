@@ -483,7 +483,7 @@ class TestSocketClient(object):
             "event": "#publish",
             "channel": my_channel,
             "data": my_data,
-            "cid": 1
+            "cid": 1,
         }
         expected_payload_2 = expected_payload_1.copy()
         expected_payload_2["cid"] = 2
@@ -492,4 +492,213 @@ class TestSocketClient(object):
         ws.send.assert_has_calls([
             call(json.dumps(expected_payload_1, sort_keys=True)),
             call(json.dumps(expected_payload_2, sort_keys=True)),
+        ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_subscribing_to_a_channel_sends_subscribe_payload(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback)
+
+        expected_payload = {
+            "event": "#subscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
+        callback.assert_not_called()
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_subscribing_to_a_channel_twice_sends_subscribe_payload_once(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback_1 = MagicMock()
+        callback_2 = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback_1)
+        client.subscribe(my_channel, callback_2)
+
+        expected_payload = {
+            "event": "#subscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
+        callback_1.assert_not_called()
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_subscribing_to_a_channel_calls_the_callback_on_publish(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback)
+
+        callback.assert_not_called()
+
+        my_data = {
+            "key": "value",
+        }
+        incoming_message = {
+            "event": "#publish",
+            "channel": my_channel,
+            "data": my_data,
+        }
+
+        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+
+        callback.assert_called_once_with(my_channel, my_data)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback)
+        client.unsubscribe(my_channel, callback)
+
+        subscribe_payload = {
+            "event": "#subscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        unsubscribe_payload = {
+            "event": "#unsubscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        ws.send.assert_has_calls([
+            call(json.dumps(subscribe_payload, sort_keys=True)),
+            call(json.dumps(unsubscribe_payload, sort_keys=True)),
+        ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload_after_all_unsubscribes(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback_1 = MagicMock()
+        callback_2 = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback_1)
+        client.subscribe(my_channel, callback_2)
+
+        subscribe_payload = {
+            "event": "#subscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
+
+        client.unsubscribe(my_channel, callback_1)
+
+        # Still just the one call
+        ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
+
+        client.unsubscribe(my_channel, callback_2)
+
+        unsubscribe_payload = {
+            "event": "#unsubscribe",
+            "data": {
+                "channel": my_channel,
+            },
+        }
+
+        ws.send.assert_has_calls([
+            call(json.dumps(subscribe_payload, sort_keys=True)),
+            call(json.dumps(unsubscribe_payload, sort_keys=True)),
+        ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_from_a_channel_means_callback_will_not_be_called_again(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback)
+
+        my_data = {
+            "key": "value",
+        }
+        incoming_message = {
+            "event": "#publish",
+            "channel": my_channel,
+            "data": my_data
+        }
+
+        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+        callback.assert_called_once_with(my_channel, my_data)
+
+        client.unsubscribe(my_channel, callback)
+
+        # The previous call still exists, but no new calls should have been made
+        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+        callback.assert_called_once_with(my_channel, my_data)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_unsubscribing_then_resubscribing_to_a_channel_resends_subscription_payload(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        callback = MagicMock()
+
+        my_channel = "test-channel"
+        client.subscribe(my_channel, callback)
+        client.unsubscribe(my_channel, callback)
+        client.subscribe(my_channel, callback)
+
+        channel_data = {
+            "channel": my_channel,
+        }
+        subscribe_payload = {
+            "event": "#subscribe",
+            "data": channel_data,
+        }
+        unsubscribe_payload = {
+            "event": "#unsubscribe",
+            "data": channel_data
+        }
+
+        ws.send.assert_has_calls([
+            call(json.dumps(subscribe_payload, sort_keys=True)),
+            call(json.dumps(unsubscribe_payload, sort_keys=True)),
+            call(json.dumps(subscribe_payload, sort_keys=True)),
         ])

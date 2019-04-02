@@ -31,6 +31,9 @@ class SocketClient(object):
         self._reconnect_enabled = bool(reconnect_enabled)
         self._reconnect_delay = float(reconnect_delay)
 
+        self._subscriptions = {}
+        self._subscription_lock = Lock()
+
     @property
     def id(self):
         return self._id
@@ -99,6 +102,46 @@ class SocketClient(object):
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
+    def subscribe(self, channel, callback):
+        send_subscribe_payload = False
+
+        with self._subscription_lock:
+            if channel not in self._subscriptions:
+                self._subscriptions[channel] = set()
+                send_subscribe_payload = True
+
+            self._subscriptions[channel].add(callback)
+
+        if send_subscribe_payload:
+            payload = {
+                "event": "#subscribe",
+                "data": {
+                    "channel": channel,
+                }
+            }
+
+            self._ws.send(json.dumps(payload, sort_keys=True))
+
+    def unsubscribe(self, channel, callback):
+        send_unsubscribe_payload = False
+
+        with self._subscription_lock:
+            self._subscriptions[channel].remove(callback)
+
+            if len(self._subscriptions[channel]) == 0:
+                del self._subscriptions[channel]
+                send_unsubscribe_payload = True
+
+        if send_unsubscribe_payload:
+            payload = {
+                "event": "#unsubscribe",
+                "data": {
+                    "channel": channel,
+                },
+            }
+
+            self._ws.send(json.dumps(payload, sort_keys=True))
+
     def _get_next_cid(self):
         with self._cid_lock:
             self._cid += 1
@@ -155,3 +198,14 @@ class SocketClient(object):
             error = message_object["error"] if "error" in message_object else None
             data = message_object["data"]
             callback(name, error, data)
+
+        if "event" not in message_object:
+            return
+
+        if message_object["event"] == "#publish":
+            channel = message_object["channel"]
+            data = message_object["data"]
+
+            subscriptions = self._subscriptions[channel] if channel in self._subscriptions else set()
+            for subscription in subscriptions:
+                subscription(channel, data)
