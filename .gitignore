@@ -1,3 +1,7 @@
-.idea
-venv
-build
+.idea/
+venv/
+build/
+__pycache__/
+
+*.egg-info
+*.swp
