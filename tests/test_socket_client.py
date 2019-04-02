@@ -58,6 +58,33 @@ class TestSocketClient(object):
         ws.send.assert_called_once_with(json.dumps(expected_handshake, sort_keys=True))
 
     @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_on_open_resets_cid_each_time(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        client._internal_on_open(ws)
+        client._internal_on_open(ws)
+
+        expected_handshake = {
+            "event": "#handshake",
+            "data": {
+                "authToken": None,
+            },
+            "cid": 1,
+        }
+
+        json_expected_handshake = json.dumps(expected_handshake, sort_keys=True)
+
+        ws.send.assert_has_calls([
+            call(json_expected_handshake),
+            call(json_expected_handshake),
+        ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
     def test_disconnect_closes_websocket(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws
@@ -248,6 +275,39 @@ class TestSocketClient(object):
         callback.assert_called_once_with(my_event_name, error_text, data_text)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_emit_increments_cid(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        my_event_name = "my_event"
+        my_event_data = {
+            "key": "value",
+        }
+
+        callback = MagicMock()
+
+        client.emit(my_event_name, my_event_data, callback)
+
+        expected_payload_1 = {
+            "event": my_event_name,
+            "data": my_event_data,
+            "cid": 1,
+        }
+
+        expected_payload_2 = expected_payload_1.copy()
+        expected_payload_2["cid"] = 2
+        client.emit(my_event_name, my_event_data, callback)
+
+        ws.send.assert_has_calls([
+            call(json.dumps(expected_payload_1, sort_keys=True)),
+            call(json.dumps(expected_payload_2, sort_keys=True)),
+        ])
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
     def test_reconnect_defaults(self, socket_app):
         client = SocketClient("test_url")
 
@@ -369,3 +429,35 @@ class TestSocketClient(object):
         client._internal_on_message(ws, json.dumps(response_payload))
 
         callback.assert_called_once_with(my_channel, error_text, data_text)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_publish_increments_cid(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        my_channel = "test-channel"
+        my_data = {
+            "key": "value",
+        }
+        callback = MagicMock()
+
+        client.publish(my_channel, my_data, callback)
+
+        expected_payload_1 = {
+            "event": "#publish",
+            "channel": my_channel,
+            "data": my_data,
+            "cid": 1
+        }
+        expected_payload_2 = expected_payload_1.copy()
+        expected_payload_2["cid"] = 2
+        client.publish(my_channel, my_data, callback)
+
+        ws.send.assert_has_calls([
+            call(json.dumps(expected_payload_1, sort_keys=True)),
+            call(json.dumps(expected_payload_2, sort_keys=True)),
+        ])

@@ -110,6 +110,8 @@ class SocketClient(object):
                 break
 
     def _internal_on_open(self, ws: WebSocketApp):
+        with self._cid_lock:
+            self._cid = 0
         cid = self._get_next_cid()
 
         handshake_event_name = "#handshake"
