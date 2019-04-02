@@ -8,7 +8,8 @@ class SocketClient(object):
     def __init__(self, url):
         self._ws = WebSocketApp(url,
                                 on_open=self._internal_on_open,
-                                on_close=self._internal_on_close)
+                                on_close=self._internal_on_close,
+                                on_message=self._internal_on_message)
         self._ws_thread = None
         self._ws_connected = False
 
@@ -49,3 +50,8 @@ class SocketClient(object):
 
     def _internal_on_close(self, ws: WebSocketApp):
         self._ws_connected = False
+
+    def _internal_on_message(self, ws: WebSocketApp, message):
+        if message == "#1":  # ping
+            self._ws.send("#2")  # pong
+            return
