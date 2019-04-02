@@ -71,21 +71,104 @@ class TestSocketClient(object):
         ws.close.assert_called_once_with()
 
     @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_on_open_and_close_manages_connected_property(self, socket_app):
+    def test_handshake_response_and_close_manages_connected_and_id_property(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws
 
         client = SocketClient("test_url")
 
+        assert client.id is None
         assert not client.connected
 
         client._internal_on_open(ws)
 
+        assert client.id is None
+        assert not client.connected
+
+        handshake_response = {
+            "id": "some_id",
+            "isAuthenticated": False,
+            "pingTimeout": 10000,
+        }
+
+        client._internal_handshake_response("#handshake", None, handshake_response)
+
+        assert client.id == "some_id"
         assert client.connected
 
         client._internal_on_close(ws)
 
+        assert client.id is None
         assert not client.connected
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_on_open_registers_handshake_response_callback(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        assert client.id is None
+
+        message = {
+            "rid": 1,
+            "data": {
+                "id": "some_id",
+                "isAuthenticated": False,
+                "pingTimeout": 10000,
+            }
+        }
+
+        client._internal_on_open(ws)
+        client._internal_on_message(ws, json.dumps(message))
+
+        assert client.id == "some_id"
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_connect_calls_on_connect_when_handshake_response_occurs(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_connect_callback = MagicMock()
+        client.on_connect(on_connect_callback)
+
+        message = {
+            "rid": 1,
+            "data": {
+                "id": "some_id",
+                "isAuthenticated": False,
+                "pingTimeout": 10000,
+            }
+        }
+
+        # This connect call doesn't do much, as the thread it starts exits immediately.
+        # We only call it to verify that the on connect callback isn't called yet.
+        client.connect()
+        client._internal_on_open(ws)
+
+        on_connect_callback.assert_not_called()
+
+        client._internal_on_message(ws, json.dumps(message))
+
+        on_connect_callback.assert_called_once_with(client)
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_disconnect_calls_on_disconnect(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+        on_disconnect_callback = MagicMock()
+        client.on_disconnect(on_disconnect_callback)
+
+        client.disconnect()
+
+        on_disconnect_callback.assert_not_called()
+
+        client._internal_on_close(ws)
+
+        on_disconnect_callback.assert_called_once_with(client)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
     def test_on_message_responds_to_ping_with_pong(self, socket_app):
@@ -154,10 +237,8 @@ class TestSocketClient(object):
         data_text = "This is some data"
         response_payload = {
             "rid": 1,
-            "data": {
-                "error": error_text,
-                "data": data_text,
-            },
+            "error": error_text,
+            "data": data_text,
         }
 
         client._internal_on_message(ws, json.dumps(response_payload))

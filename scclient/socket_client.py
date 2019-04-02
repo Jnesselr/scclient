@@ -3,6 +3,8 @@ from threading import Lock, Thread
 
 from websocket import WebSocketApp
 
+from scclient.event_listener import EventListener
+
 
 class SocketClient(object):
     def __init__(self, url):
@@ -16,13 +18,28 @@ class SocketClient(object):
         self._cid = 0
         self._cid_lock = Lock()
 
+        self._id = None
         self._auth_token = None
 
         self._callbacks = {}
+        self._on_connect_event = EventListener()
+        self._on_disconnect_event = EventListener()
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def connected(self):
         return self._ws_connected
+
+    @property
+    def on_connect(self):
+        return self._on_connect_event.listener
+
+    @property
+    def on_disconnect(self):
+        return self._on_disconnect_event.listener
 
     def connect(self):
         self._ws_thread = Thread(target=self._ws.run_forever, daemon=True)
@@ -52,20 +69,31 @@ class SocketClient(object):
             return self._cid
 
     def _internal_on_open(self, ws: WebSocketApp):
+        cid = self._get_next_cid()
+
+        handshake_event_name = "#handshake"
         handshake_object = {
-            "event": "#handshake",
+            "event": handshake_event_name,
             "data": {
                 "authToken": self._auth_token,
             },
-            "cid": self._get_next_cid(),
+            "cid": cid,
         }
 
+        self._callbacks[cid] = (handshake_event_name, self._internal_handshake_response)
         ws.send(json.dumps(handshake_object, sort_keys=True))
 
+    def _internal_handshake_response(self, event_name, error, response):
+        self._id = response["id"]
         self._ws_connected = True
 
+        self._on_connect_event(self)
+
     def _internal_on_close(self, ws: WebSocketApp):
+        self._id = None
         self._ws_connected = False
+
+        self._on_disconnect_event(self)
 
     def _internal_on_message(self, ws: WebSocketApp, message):
         if message == "#1":  # ping
@@ -78,6 +106,6 @@ class SocketClient(object):
             name = callback_tuple[0]  # Either the event or channel name
             callback = callback_tuple[1]
 
-            error = message_object["data"]["error"]
-            data = message_object["data"]["data"]
+            error = message_object["error"] if "error" in message_object else None
+            data = message_object["data"]
             callback(name, error, data)
