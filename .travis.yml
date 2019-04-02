@@ -7,4 +7,8 @@ install:
   - python setup.py install
 
 script:
-  - pytest
+  - pytest --cov=scclient tests/
+
+after_success:
+  - coverage xml
+  - python-codacy-coverage -r coverage.xml

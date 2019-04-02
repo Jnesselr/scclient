@@ -28,6 +28,8 @@ setup(
         "websocket-client<1.0"
     ],
     tests_require=[
-        "pytest"
+        "pytest",
+        "pytest-cov",
+        "codacy-coverage",
     ],
 )
