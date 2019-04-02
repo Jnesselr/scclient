@@ -27,7 +27,7 @@ setup(
     install_requires=[
         "websocket-client<1.0",
 
-        "pytest",
+        "pytest>=4.4.0",
         "pytest-cov",
         "codacy-coverage",
     ],
