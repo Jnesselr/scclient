@@ -18,6 +18,8 @@ class SocketClient(object):
 
         self._auth_token = None
 
+        self._callbacks = {}
+
     @property
     def connected(self):
         return self._ws_connected
@@ -29,6 +31,20 @@ class SocketClient(object):
     def disconnect(self):
         # This causes the _ws_thread to stop on its own
         self._ws.close()
+
+    def emit(self, event, data, callback=None):
+        payload = {
+            "event": event,
+            "data": data,
+        }
+
+        if callback is not None:
+            cid = self._get_next_cid()
+            payload["cid"] = cid
+
+            self._callbacks[cid] = (event, callback)
+
+        self._ws.send(json.dumps(payload, sort_keys=True))
 
     def _get_next_cid(self):
         with self._cid_lock:
@@ -55,3 +71,13 @@ class SocketClient(object):
         if message == "#1":  # ping
             self._ws.send("#2")  # pong
             return
+
+        message_object = json.loads(message)
+        if "rid" in message_object:
+            callback_tuple = self._callbacks[message_object["rid"]]
+            name = callback_tuple[0]  # Either the event or channel name
+            callback = callback_tuple[1]
+
+            error = message_object["data"]["error"]
+            data = message_object["data"]["data"]
+            callback(name, error, data)

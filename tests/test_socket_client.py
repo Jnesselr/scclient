@@ -1,6 +1,6 @@
 import json
 from unittest import mock
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 from websocket import WebSocketApp
 
@@ -99,3 +99,67 @@ class TestSocketClient(object):
         client._internal_on_message(ws, "#1")
 
         ws.send.assert_called_once_with("#2")
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_emitting_event_without_callback_sends_the_correct_payload(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        my_event_name = "my_event"
+        my_event_data = {
+            "key": "value",
+        }
+
+        client.emit(my_event_name, my_event_data)
+
+        expected_payload = {
+            "event": my_event_name,
+            "data": my_event_data,
+        }
+
+        ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_emitting_event_with_callback_sends_the_correct_payload_and_calls_callback(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        ws.send.assert_not_called()
+
+        my_event_name = "my_event"
+        my_event_data = {
+            "key": "value",
+        }
+
+        callback = MagicMock()
+
+        client.emit(my_event_name, my_event_data, callback)
+
+        expected_payload = {
+            "event": my_event_name,
+            "data": my_event_data,
+            "cid": 1,
+        }
+
+        ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
+        callback.assert_not_called()
+
+        error_text = "This is an error"
+        data_text = "This is some data"
+        response_payload = {
+            "rid": 1,
+            "data": {
+                "error": error_text,
+                "data": data_text,
+            },
+        }
+
+        client._internal_on_message(ws, json.dumps(response_payload))
+
+        callback.assert_called_once_with(my_event_name, error_text, data_text)
