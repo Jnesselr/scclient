@@ -82,6 +82,20 @@ class SocketClient(object):
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
+    def publish(self, channel, data, callback=None):
+        cid = self._get_next_cid()
+        payload = {
+            "event": "#publish",
+            "channel": channel,
+            "data": data,
+            "cid": cid
+        }
+
+        if callback is not None:
+            self._callbacks[cid] = (channel, callback)
+
+        self._ws.send(json.dumps(payload, sort_keys=True))
+
     def _get_next_cid(self):
         with self._cid_lock:
             self._cid += 1

@@ -308,3 +308,64 @@ class TestSocketClient(object):
         client.disconnect()
 
         assert not client.reconnect_enabled
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_publish_sends_payload_to_ws(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        my_channel = "test-channel"
+        my_data = {
+            "key": "value",
+        }
+
+        client.publish(my_channel, my_data)
+
+        payload = {
+            "event": "#publish",
+            "channel": my_channel,
+            "data": my_data,
+            "cid": 1
+        }
+
+        ws.send.assert_called_once_with(json.dumps(payload, sort_keys=True))
+
+    @mock.patch('scclient.socket_client.WebSocketApp')
+    def test_publish_sends_payload_to_ws_with_callback(self, socket_app):
+        ws = Mock(WebSocketApp)
+        socket_app.return_value = ws
+
+        client = SocketClient("test_url")
+
+        my_channel = "test-channel"
+        my_data = {
+            "key": "value",
+        }
+        callback = MagicMock()
+
+        client.publish(my_channel, my_data, callback)
+
+        payload = {
+            "event": "#publish",
+            "channel": my_channel,
+            "data": my_data,
+            "cid": 1
+        }
+
+        ws.send.assert_called_once_with(json.dumps(payload, sort_keys=True))
+
+        callback.assert_not_called()
+
+        error_text = "This is an error"
+        data_text = "This is some data"
+        response_payload = {
+            "rid": 1,
+            "error": error_text,
+            "data": data_text,
+        }
+
+        client._internal_on_message(ws, json.dumps(response_payload))
+
+        callback.assert_called_once_with(my_channel, error_text, data_text)
