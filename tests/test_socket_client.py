@@ -78,7 +78,7 @@ class TestSocketClient(object):
 
         ws.send.assert_not_called()
 
-        client._internal_on_open(ws)
+        client._internal_on_open()
 
         expected_handshake = {
             "event": "#handshake",
@@ -99,8 +99,8 @@ class TestSocketClient(object):
 
         ws.send.assert_not_called()
 
-        client._internal_on_open(ws)
-        client._internal_on_open(ws)
+        client._internal_on_open()
+        client._internal_on_open()
 
         expected_handshake = {
             "event": "#handshake",
@@ -142,7 +142,7 @@ class TestSocketClient(object):
         assert client.id is None
         assert not client.connected
 
-        client._internal_on_open(ws)
+        client._internal_on_open()
 
         assert client.id is None
         assert not client.connected
@@ -158,7 +158,7 @@ class TestSocketClient(object):
         assert client.id == "some_id"
         assert client.connected
 
-        client._internal_on_close(ws)
+        client._internal_on_close()
 
         assert client.id is None
         assert not client.connected
@@ -181,8 +181,8 @@ class TestSocketClient(object):
             }
         }
 
-        client._internal_on_open(ws)
-        client._internal_on_message(ws, json.dumps(message))
+        client._internal_on_open()
+        client._internal_on_message(json.dumps(message))
 
         assert client.id == "some_id"
 
@@ -207,11 +207,11 @@ class TestSocketClient(object):
         # This connect call doesn't do much, as the thread it starts exits immediately.
         # We only call it to verify that the on connect callback isn't called yet.
         client.connect()
-        client._internal_on_open(ws)
+        client._internal_on_open()
 
         on_connect_callback.assert_not_called()
 
-        client._internal_on_message(ws, json.dumps(message))
+        client._internal_on_message(json.dumps(message))
 
         on_connect_callback.assert_called_once_with(client)
 
@@ -228,7 +228,7 @@ class TestSocketClient(object):
 
         on_disconnect_callback.assert_not_called()
 
-        client._internal_on_close(ws)
+        client._internal_on_close()
 
         on_disconnect_callback.assert_called_once_with(client)
 
@@ -241,7 +241,7 @@ class TestSocketClient(object):
 
         ws.send.assert_not_called()
 
-        client._internal_on_message(ws, "#1")
+        client._internal_on_message("#1")
 
         ws.send.assert_called_once_with("#2")
 
@@ -303,7 +303,7 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(ws, json.dumps(response_payload))
+        client._internal_on_message(json.dumps(response_payload))
 
         callback.assert_called_once_with(my_event_name, error_text, data_text)
 
@@ -330,7 +330,7 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(ws, json.dumps(response_payload))
+        client._internal_on_message(json.dumps(response_payload))
 
         callback.assert_not_called()
 
@@ -357,7 +357,7 @@ class TestSocketClient(object):
             "cid": 1,
         }
 
-        client._internal_on_message(ws, json.dumps(payload, sort_keys=True))
+        client._internal_on_message(json.dumps(payload, sort_keys=True))
 
         callback.assert_called_once_with(my_event_name, my_event_data)
 
@@ -472,8 +472,10 @@ class TestSocketClient(object):
 
         payload = {
             "event": "#publish",
-            "channel": my_channel,
-            "data": my_data,
+            "data": {
+                "channel": my_channel,
+                "data": my_data,
+            },
             "cid": 1
         }
 
@@ -496,8 +498,10 @@ class TestSocketClient(object):
 
         payload = {
             "event": "#publish",
-            "channel": my_channel,
-            "data": my_data,
+            "data": {
+                "channel": my_channel,
+                "data": my_data,
+            },
             "cid": 1
         }
 
@@ -513,7 +517,7 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(ws, json.dumps(response_payload))
+        client._internal_on_message(json.dumps(response_payload))
 
         callback.assert_called_once_with(my_channel, error_text, data_text)
 
@@ -536,8 +540,10 @@ class TestSocketClient(object):
 
         expected_payload_1 = {
             "event": "#publish",
-            "channel": my_channel,
-            "data": my_data,
+            "data": {
+                "channel": my_channel,
+                "data": my_data,
+            },
             "cid": 1,
         }
         expected_payload_2 = expected_payload_1.copy()
@@ -624,11 +630,13 @@ class TestSocketClient(object):
         }
         incoming_message = {
             "event": "#publish",
-            "channel": my_channel_name,
-            "data": my_data,
+            "data": {
+                "channel": my_channel_name,
+                "data": my_data,
+            }
         }
 
-        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
 
         callback.assert_called_once_with(my_channel_name, my_data)
 
@@ -738,17 +746,19 @@ class TestSocketClient(object):
         }
         incoming_message = {
             "event": "#publish",
-            "channel": my_channel,
-            "data": my_data
+            "data": {
+                "channel": my_channel,
+                "data": my_data,
+            },
         }
 
-        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
         callback.assert_called_once_with(my_channel, my_data)
 
         client.unsubscribe(my_channel, callback)
 
         # The previous call still exists, but no new calls should have been made
-        client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
+        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
         callback.assert_called_once_with(my_channel, my_data)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
@@ -819,7 +829,7 @@ class TestSocketClient(object):
             "rid": 1,
         }
 
-        client._internal_on_message(ws, json.dumps(successful_subscription_payload, sort_keys=True))
+        client._internal_on_message(json.dumps(successful_subscription_payload, sort_keys=True))
 
         assert channel.status == Channel.SUBSCRIBED
 
@@ -864,7 +874,7 @@ class TestSocketClient(object):
             "rid": 1,
         }
 
-        client._internal_on_message(ws, json.dumps(successful_subscription_payload, sort_keys=True))
+        client._internal_on_message(json.dumps(successful_subscription_payload, sort_keys=True))
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 

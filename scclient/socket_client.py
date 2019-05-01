@@ -131,8 +131,10 @@ class SocketClient(object):
         cid = self._get_next_cid()
         payload = {
             "event": "#publish",
-            "channel": channel,
-            "data": data,
+            "data": {
+                "channel": channel,
+                "data": data,
+            },
             "cid": cid
         }
 
@@ -216,7 +218,7 @@ class SocketClient(object):
             else:
                 break
 
-    def _internal_on_open(self, ws: WebSocketApp):
+    def _internal_on_open(self):
         with self._cid_lock:
             self._cid = 0
         cid = self._get_next_cid()
@@ -231,7 +233,7 @@ class SocketClient(object):
         }
 
         self._id_based_callbacks[cid] = (handshake_event_name, self._internal_handshake_response)
-        ws.send(json.dumps(handshake_object, sort_keys=True))
+        self._ws.send(json.dumps(handshake_object, sort_keys=True))
 
     def _internal_handshake_response(self, event_name, error, response):
         self._id = response["id"]
@@ -239,13 +241,13 @@ class SocketClient(object):
 
         self._on_connect_event(self)
 
-    def _internal_on_close(self, ws: WebSocketApp):
+    def _internal_on_close(self):
         self._id = None
         self._ws_connected = False
 
         self._on_disconnect_event(self)
 
-    def _internal_on_message(self, ws: WebSocketApp, message):
+    def _internal_on_message(self, message):
         if message == "#1":  # ping
             self._ws.send("#2")  # pong
             return
@@ -267,11 +269,12 @@ class SocketClient(object):
         message_data = message_object["data"] if "data" in message_object else None
 
         if event_name == "#publish":
-            channel = message_object["channel"]
+            channel = message_data["channel"]
+            channel_data = message_data["data"]
 
             subscriptions = self._subscriptions[channel] if channel in self._subscriptions else set()
             for subscription in subscriptions:
-                subscription(channel, message_data)
+                subscription(channel, channel_data)
 
         if event_name in self._event_based_callbacks:
             for callback in self._event_based_callbacks[event_name]:
