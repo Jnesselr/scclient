@@ -2,6 +2,7 @@ from scclient.event_listener import Listener
 
 class Channel(object):
     PENDING = "pending"
+    SUBSCRIBED = "subscribed"
     UNSUBSCRIBED = "unsubscribed"
 
     def __init__(self,

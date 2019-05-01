@@ -157,16 +157,24 @@ class SocketClient(object):
         if send_subscribe_payload:
             self._channels[channel_name].set_state(Channel.PENDING)
 
+            cid = self._get_next_cid()
+
             payload = {
                 "event": "#subscribe",
                 "data": {
                     "channel": channel_name,
-                }
+                },
+                "cid": cid,
             }
 
-            self._ws.send(json.dumps(payload, sort_keys=True))
+            def callback(name, error, data):
+                self._channels[name].set_state(Channel.SUBSCRIBED)
 
-            self._on_subscribe_event(self, channel_name)
+                self._on_subscribe_event(self, name)
+
+            self._id_based_callbacks[cid] = (channel_name, callback)
+
+            self._ws.send(json.dumps(payload, sort_keys=True))
 
         return self._channels[channel_name].channel
 
@@ -249,7 +257,7 @@ class SocketClient(object):
             callback = callback_tuple[1]
 
             error = message_object["error"] if "error" in message_object else None
-            data = message_object["data"]
+            data = message_object["data"] if "data" in message_object else None
             callback(name, error, data)
 
         if "event" not in message_object:

@@ -568,6 +568,7 @@ class TestSocketClient(object):
             "data": {
                 "channel": my_channel_name,
             },
+            "cid": 1,
         }
 
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
@@ -596,6 +597,7 @@ class TestSocketClient(object):
             "data": {
                 "channel": my_channel_name,
             },
+            "cid": 1,
         }
 
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
@@ -655,6 +657,7 @@ class TestSocketClient(object):
             "data": {
                 "channel": my_channel_name,
             },
+            "cid": 1,
         }
 
         unsubscribe_payload = {
@@ -690,6 +693,7 @@ class TestSocketClient(object):
             "data": {
                 "channel": my_channel_name,
             },
+            "cid": 1,
         }
 
         ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
@@ -772,23 +776,29 @@ class TestSocketClient(object):
         channel_data = {
             "channel": my_channel_name,
         }
-        subscribe_payload = {
+        first_subscribe_payload = {
             "event": "#subscribe",
             "data": channel_data,
+            "cid": 1,
         }
         unsubscribe_payload = {
             "event": "#unsubscribe",
             "data": channel_data
         }
+        second_subscribe_payload = {
+            "event": "#subscribe",
+            "data": channel_data,
+            "cid": 2,
+        }
 
         ws.send.assert_has_calls([
-            call(json.dumps(subscribe_payload, sort_keys=True)),
+            call(json.dumps(first_subscribe_payload, sort_keys=True)),
             call(json.dumps(unsubscribe_payload, sort_keys=True)),
-            call(json.dumps(subscribe_payload, sort_keys=True)),
+            call(json.dumps(second_subscribe_payload, sort_keys=True)),
         ])
 
     @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_calls_on_subscribe(self, socket_app):
+    def test_subscribing_calls_on_subscribe_after_successful_subscription(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws
 
@@ -799,12 +809,24 @@ class TestSocketClient(object):
         on_subscribe_callback.assert_not_called()
 
         channel_name = "test-channel"
-        client.subscribe(channel_name, MagicMock())
+        channel = client.subscribe(channel_name, MagicMock())
+
+        on_subscribe_callback.assert_not_called()
+
+        assert channel.status == Channel.PENDING
+
+        successful_subscription_payload = {
+            "rid": 1,
+        }
+
+        client._internal_on_message(ws, json.dumps(successful_subscription_payload, sort_keys=True))
+
+        assert channel.status == Channel.SUBSCRIBED
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_calls_on_unsubscribe(self, socket_app):
+    def test_unsubscribing_calls_on_unsubscribe_immediately(self, socket_app):
         ws = Mock(WebSocketApp)
         socket_app.return_value = ws
 
@@ -833,8 +855,16 @@ class TestSocketClient(object):
         on_subscribe_callback.assert_not_called()
 
         channel_name = "test-channel"
+        channel = client.subscribe(channel_name, MagicMock())
         client.subscribe(channel_name, MagicMock())
-        client.subscribe(channel_name, MagicMock())
+
+        assert channel.status == Channel.PENDING
+
+        successful_subscription_payload = {
+            "rid": 1,
+        }
+
+        client._internal_on_message(ws, json.dumps(successful_subscription_payload, sort_keys=True))
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 
