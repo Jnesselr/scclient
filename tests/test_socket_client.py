@@ -7,6 +7,7 @@ import pytest
 from websocket import WebSocketApp
 
 from scclient import SocketClient
+from scclient.channel import Channel
 
 
 class TestSocketClient(object):
@@ -557,18 +558,22 @@ class TestSocketClient(object):
 
         callback = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback)
+        my_channel_name = "test-channel"
+        channel = client.subscribe(my_channel_name, callback)
+
+        assert channel is client.channels[my_channel_name]
 
         expected_payload = {
             "event": "#subscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
         callback.assert_not_called()
+
+        assert channel.status == Channel.PENDING
 
     @mock.patch('scclient.socket_client.WebSocketApp')
     def test_subscribing_to_a_channel_twice_sends_subscribe_payload_once(self, socket_app):
@@ -580,19 +585,23 @@ class TestSocketClient(object):
         callback_1 = MagicMock()
         callback_2 = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback_1)
-        client.subscribe(my_channel, callback_2)
+        my_channel_name = "test-channel"
+        channel_1 = client.subscribe(my_channel_name, callback_1)
+        channel_2 = client.subscribe(my_channel_name, callback_2)
+
+        assert channel_1 is channel_2
 
         expected_payload = {
             "event": "#subscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
         callback_1.assert_not_called()
+
+        assert channel_1.status == Channel.PENDING
 
     @mock.patch('scclient.socket_client.WebSocketApp')
     def test_subscribing_to_a_channel_calls_the_callback_on_publish(self, socket_app):
@@ -603,8 +612,8 @@ class TestSocketClient(object):
 
         callback = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback)
+        my_channel_name = "test-channel"
+        client.subscribe(my_channel_name, callback)
 
         callback.assert_not_called()
 
@@ -613,13 +622,13 @@ class TestSocketClient(object):
         }
         incoming_message = {
             "event": "#publish",
-            "channel": my_channel,
+            "channel": my_channel_name,
             "data": my_data,
         }
 
         client._internal_on_message(ws, json.dumps(incoming_message, sort_keys=True))
 
-        callback.assert_called_once_with(my_channel, my_data)
+        callback.assert_called_once_with(my_channel_name, my_data)
 
     @mock.patch('scclient.socket_client.WebSocketApp')
     def test_unsubscribing_from_a_channel_sends_unsubscribe_payload(self, socket_app):
@@ -630,21 +639,28 @@ class TestSocketClient(object):
 
         callback = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback)
-        client.unsubscribe(my_channel, callback)
+        my_channel_name = "test-channel"
+        channel = client.subscribe(my_channel_name, callback)
+
+        assert my_channel_name in client.channels
+        assert channel.status == Channel.PENDING
+
+        client.unsubscribe(my_channel_name, callback)
+
+        assert my_channel_name in client.channels
+        assert channel.status == Channel.UNSUBSCRIBED
 
         subscribe_payload = {
             "event": "#subscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
         unsubscribe_payload = {
             "event": "#unsubscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
@@ -663,30 +679,36 @@ class TestSocketClient(object):
         callback_1 = MagicMock()
         callback_2 = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback_1)
-        client.subscribe(my_channel, callback_2)
+        my_channel_name = "test-channel"
+        channel = client.subscribe(my_channel_name, callback_1)
+        client.subscribe(my_channel_name, callback_2)
+
+        assert channel.status == Channel.PENDING
 
         subscribe_payload = {
             "event": "#subscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
         ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
 
-        client.unsubscribe(my_channel, callback_1)
+        client.unsubscribe(my_channel_name, callback_1)
+
+        assert channel.status == Channel.PENDING
 
         # Still just the one call
         ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
 
-        client.unsubscribe(my_channel, callback_2)
+        client.unsubscribe(my_channel_name, callback_2)
+
+        assert channel.status == Channel.UNSUBSCRIBED
 
         unsubscribe_payload = {
             "event": "#unsubscribe",
             "data": {
-                "channel": my_channel,
+                "channel": my_channel_name,
             },
         }
 
@@ -734,13 +756,21 @@ class TestSocketClient(object):
 
         callback = MagicMock()
 
-        my_channel = "test-channel"
-        client.subscribe(my_channel, callback)
-        client.unsubscribe(my_channel, callback)
-        client.subscribe(my_channel, callback)
+        my_channel_name = "test-channel"
+        channel = client.subscribe(my_channel_name, callback)
+
+        assert channel.status == Channel.PENDING
+
+        client.unsubscribe(my_channel_name, callback)
+
+        assert channel.status == Channel.UNSUBSCRIBED
+
+        client.subscribe(my_channel_name, callback)
+
+        assert channel.status == Channel.PENDING
 
         channel_data = {
-            "channel": my_channel,
+            "channel": my_channel_name,
         }
         subscribe_payload = {
             "event": "#subscribe",

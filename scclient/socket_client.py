@@ -4,7 +4,21 @@ from threading import Lock, Thread
 
 from websocket import WebSocketApp
 
+from scclient.channel import Channel
 from scclient.event_listener import EventListener
+
+
+class ChannelWrapper(object):
+    def __init__(self):
+        self._status_change = EventListener()
+        self._channel = Channel(self._status_change.listener)
+
+    @property
+    def channel(self):
+        return self._channel
+
+    def set_state(self, state):
+        self._status_change.emit(state)
 
 
 class SocketClient(object):
@@ -37,6 +51,7 @@ class SocketClient(object):
         self._reconnect_delay = float(reconnect_delay)
 
         self._subscriptions = {}
+        self._channels = {}
         self._subscription_lock = Lock()
 
     @property
@@ -58,6 +73,10 @@ class SocketClient(object):
     @property
     def reconnect_delay(self):
         return self._reconnect_delay
+
+    @property
+    def channels(self):
+        return dict(map(lambda key: (key, self._channels[key].channel), self._channels))
 
     @property
     def on_connect(self):
@@ -122,49 +141,59 @@ class SocketClient(object):
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
-    def subscribe(self, channel, callback):
+    def subscribe(self, channel_name, callback):
         send_subscribe_payload = False
 
         with self._subscription_lock:
-            if channel not in self._subscriptions:
-                self._subscriptions[channel] = set()
+            if channel_name not in self._subscriptions:
+                self._subscriptions[channel_name] = set()
                 send_subscribe_payload = True
 
-            self._subscriptions[channel].add(callback)
+            if channel_name not in self._channels:
+                self._channels[channel_name] = ChannelWrapper()
+
+            self._subscriptions[channel_name].add(callback)
 
         if send_subscribe_payload:
+            self._channels[channel_name].set_state(Channel.PENDING)
+
             payload = {
                 "event": "#subscribe",
                 "data": {
-                    "channel": channel,
+                    "channel": channel_name,
                 }
             }
 
             self._ws.send(json.dumps(payload, sort_keys=True))
 
-            self._on_subscribe_event(self, channel)
+            self._on_subscribe_event(self, channel_name)
 
-    def unsubscribe(self, channel, callback):
+        return self._channels[channel_name].channel
+
+    def unsubscribe(self, channel_name, callback):
         send_unsubscribe_payload = False
 
         with self._subscription_lock:
-            self._subscriptions[channel].remove(callback)
+            self._subscriptions[channel_name].remove(callback)
 
-            if len(self._subscriptions[channel]) == 0:
-                del self._subscriptions[channel]
+            if len(self._subscriptions[channel_name]) == 0:
+                del self._subscriptions[channel_name]
                 send_unsubscribe_payload = True
+
+                channel_wrapper = self._channels[channel_name]
+                channel_wrapper.set_state(Channel.UNSUBSCRIBED)
 
         if send_unsubscribe_payload:
             payload = {
                 "event": "#unsubscribe",
                 "data": {
-                    "channel": channel,
+                    "channel": channel_name,
                 },
             }
 
             self._ws.send(json.dumps(payload, sort_keys=True))
 
-            self._on_unsubscribe_event(self, channel)
+            self._on_unsubscribe_event(self, channel_name)
 
     def _get_next_cid(self):
         with self._cid_lock:
