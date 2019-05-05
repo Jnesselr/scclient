@@ -695,3 +695,18 @@ class TestSocketClient(object):
         client.unsubscribe(channel_name, callback_2)
 
         on_unsubscribe_callback.assert_called_once_with(client, channel_name)
+
+    def test_subscribing_fails_on_error(self, ws, client):
+        channel_name = "test-channel"
+        channel = client.subscribe(channel_name, MagicMock())
+
+        failed_subscription_payload = {
+            "rid": 1,
+            "error": {
+                "message": "Could not verify authentication"
+            }
+        }
+
+        ws.on_message(json.dumps(failed_subscription_payload))
+
+        assert channel.status == Channel.UNSUBSCRIBED

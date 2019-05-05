@@ -170,7 +170,10 @@ class SocketClient(object):
             }
 
             def callback(name, error, data):
-                self._channels[name].set_state(Channel.SUBSCRIBED)
+                if error is not None:
+                    self._channels[name].set_state(Channel.UNSUBSCRIBED)
+                else:
+                    self._channels[name].set_state(Channel.SUBSCRIBED)
 
                 self._on_subscribe_event(self, name)
 
