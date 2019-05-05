@@ -4,31 +4,13 @@ from unittest import mock
 from unittest.mock import Mock, MagicMock, call
 
 import pytest
-from websocket import WebSocketApp
 
 from scclient import SocketClient
 from scclient.channel import Channel
 
 
 class TestSocketClient(object):
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_socket_is_created_with_correct_parameters(self, socket_app):
-        url = "wss://foo.com/socket/"
-        client = SocketClient(url)
-
-        assert client is not None
-        socket_app.assert_called_once_with(url,
-                                           on_open=client._internal_on_open,
-                                           on_close=client._internal_on_close,
-                                           on_message=client._internal_on_message)
-
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_connect_starts_ws_thread(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_connect_starts_ws_thread(self, ws, client):
         ws.run_forever.assert_not_called()
         ws.send.assert_not_called()
 
@@ -37,13 +19,7 @@ class TestSocketClient(object):
 
         ws.run_forever.assert_called_once_with()
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_connect_does_not_create_new_thread_if_existing_one_is_alive(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_connect_does_not_create_new_thread_if_existing_one_is_alive(self, client):
         ws_thread = Mock(Thread)
         ws_thread.is_alive.return_value = True
         client._ws_thread = ws_thread
@@ -53,13 +29,7 @@ class TestSocketClient(object):
         assert client._ws_thread is ws_thread
         client._ws_thread.start.assert_not_called()
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_connect_does_create_new_thread_if_existing_one_is_dead(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_connect_does_create_new_thread_if_existing_one_is_dead(self, ws, client):
         ws_thread = Mock(Thread)
         ws_thread.is_alive.return_value = False
         client._ws_thread = ws_thread
@@ -69,16 +39,10 @@ class TestSocketClient(object):
         assert client._ws_thread is not ws_thread
         ws.run_forever.assert_called_once_with()
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_on_open_sends_handshake(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_on_open_sends_handshake(self, ws):
         ws.send.assert_not_called()
 
-        client._internal_on_open()
+        ws.on_open()
 
         expected_handshake = {
             "event": "#handshake",
@@ -90,17 +54,11 @@ class TestSocketClient(object):
 
         ws.send.assert_called_once_with(json.dumps(expected_handshake, sort_keys=True))
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_on_open_resets_cid_each_time(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_on_open_resets_cid_each_time(self, ws):
         ws.send.assert_not_called()
 
-        client._internal_on_open()
-        client._internal_on_open()
+        ws.on_open()
+        ws.on_open()
 
         expected_handshake = {
             "event": "#handshake",
@@ -117,13 +75,7 @@ class TestSocketClient(object):
             call(json_expected_handshake),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_disconnect_closes_websocket(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_disconnect_closes_websocket(self, ws, client):
         client.connect()
 
         ws.close.assert_not_called()
@@ -132,47 +84,16 @@ class TestSocketClient(object):
 
         ws.close.assert_called_once_with()
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_handshake_response_and_close_manages_connected_and_id_property(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_handshake_response_and_close_manages_connected_and_id_property(self, ws, client):
         assert client.id is None
         assert not client.connected
 
-        client._internal_on_open()
+        ws.on_open()
 
         assert client.id is None
         assert not client.connected
 
         handshake_response = {
-            "id": "some_id",
-            "isAuthenticated": False,
-            "pingTimeout": 10000,
-        }
-
-        client._internal_handshake_response("#handshake", None, handshake_response)
-
-        assert client.id == "some_id"
-        assert client.connected
-
-        client._internal_on_close()
-
-        assert client.id is None
-        assert not client.connected
-
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_on_open_registers_handshake_response_callback(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
-        assert client.id is None
-
-        message = {
             "rid": 1,
             "data": {
                 "id": "some_id",
@@ -181,17 +102,17 @@ class TestSocketClient(object):
             }
         }
 
-        client._internal_on_open()
-        client._internal_on_message(json.dumps(message))
+        ws.on_message(json.dumps(handshake_response))
 
         assert client.id == "some_id"
+        assert client.connected
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_connect_calls_on_connect_when_handshake_response_occurs(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
+        ws.on_close()
 
-        client = SocketClient("test_url")
+        assert client.id is None
+        assert not client.connected
+
+    def test_connect_calls_on_connect_when_handshake_response_occurs(self, ws, client):
         on_connect_callback = MagicMock()
         client.on_connect(on_connect_callback)
 
@@ -207,20 +128,15 @@ class TestSocketClient(object):
         # This connect call doesn't do much, as the thread it starts exits immediately.
         # We only call it to verify that the on connect callback isn't called yet.
         client.connect()
-        client._internal_on_open()
+        ws.on_open()
 
         on_connect_callback.assert_not_called()
 
-        client._internal_on_message(json.dumps(message))
+        ws.on_message(json.dumps(message))
 
         on_connect_callback.assert_called_once_with(client)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_disconnect_calls_on_disconnect(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
+    def test_disconnect_calls_on_disconnect(self, ws, client):
         on_disconnect_callback = MagicMock()
         client.on_disconnect(on_disconnect_callback)
 
@@ -228,30 +144,18 @@ class TestSocketClient(object):
 
         on_disconnect_callback.assert_not_called()
 
-        client._internal_on_close()
+        ws.on_close()
 
         on_disconnect_callback.assert_called_once_with(client)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_on_message_responds_to_ping_with_pong(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_on_message_responds_to_ping_with_pong(self, ws):
         ws.send.assert_not_called()
 
-        client._internal_on_message("#1")
+        ws.on_message("#1")
 
         ws.send.assert_called_once_with("#2")
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_emitting_event_without_callback_sends_the_correct_payload(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_emitting_event_without_callback_sends_the_correct_payload(self, ws, client):
         ws.send.assert_not_called()
 
         my_event_name = "my_event"
@@ -268,13 +172,7 @@ class TestSocketClient(object):
 
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_emitting_event_with_callback_sends_the_correct_payload_and_calls_callback(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_emitting_event_with_callback_sends_the_correct_payload_and_calls_callback(self, ws, client):
         ws.send.assert_not_called()
 
         my_event_name = "my_event"
@@ -303,17 +201,11 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(json.dumps(response_payload))
+        ws.on_message(json.dumps(response_payload))
 
         callback.assert_called_once_with(my_event_name, error_text, data_text)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_emitting_event_without_callback_does_not_fail_or_call_different_callback(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_emitting_event_without_callback_does_not_fail_or_call_different_callback(self, ws, client):
         ws.send.assert_not_called()
 
         callback = MagicMock()
@@ -330,17 +222,11 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(json.dumps(response_payload))
+        ws.on_message(json.dumps(response_payload))
 
         callback.assert_not_called()
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_emit_calls_on_handler(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_emit_calls_on_handler(self, ws, client):
         callback = MagicMock()
 
         my_event_name = "some_random_event"
@@ -357,17 +243,11 @@ class TestSocketClient(object):
             "cid": 1,
         }
 
-        client._internal_on_message(json.dumps(payload, sort_keys=True))
+        ws.on_message(json.dumps(payload, sort_keys=True))
 
         callback.assert_called_once_with(my_event_name, my_event_data)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_emit_increments_cid(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_emit_increments_cid(self, ws, client):
         ws.send.assert_not_called()
 
         my_event_name = "my_event"
@@ -394,15 +274,15 @@ class TestSocketClient(object):
             call(json.dumps(expected_payload_2, sort_keys=True)),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_reconnect_defaults(self, socket_app):
-        client = SocketClient("test_url")
-
+    def test_reconnect_defaults(self, client):
         assert not client.reconnect_enabled
         assert client.reconnect_delay == 2
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_reconnect_kwargs(self, socket_app):
+    def test_reconnect_kwargs(self, ws):
+        # The parameter isn't used in the function, but it forces the WebSocketApp to be mocked.
+        # We assert it is not None here so we don't get warned about it not being used.
+        assert ws is not None
+
         client = SocketClient("test_url",
                               reconnect_enabled=True,
                               reconnect_delay=5)
@@ -410,12 +290,8 @@ class TestSocketClient(object):
         assert client.reconnect_enabled
         assert client.reconnect_delay == 5
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
     @mock.patch('scclient.socket_client.time')
-    def test_reconnect_is_called_until_it_is_disabled(self, time_patch, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
+    def test_reconnect_is_called_until_it_is_disabled(self, time_patch, ws):
         client = SocketClient("test_url",
                               reconnect_enabled=True,
                               reconnect_delay=0.001)
@@ -445,10 +321,10 @@ class TestSocketClient(object):
         assert not client.reconnect_enabled
         time_patch.sleep.assert_has_calls([call(client.reconnect_delay)] * 4)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_disconnecting_manually_disables_reconnects(self, socket_app):
-        client = SocketClient("test_url",
-                              reconnect_enabled=True)
+    def test_disconnecting_manually_disables_reconnects(self, client):
+        assert not client.reconnect_enabled
+
+        client.reconnect_enabled = True
 
         assert client.reconnect_enabled
 
@@ -456,13 +332,7 @@ class TestSocketClient(object):
 
         assert not client.reconnect_enabled
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_publish_sends_payload_to_ws(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_publish_sends_payload_to_ws(self, ws, client):
         my_channel = "test-channel"
         my_data = {
             "key": "value",
@@ -481,13 +351,7 @@ class TestSocketClient(object):
 
         ws.send.assert_called_once_with(json.dumps(payload, sort_keys=True))
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_publish_sends_payload_to_ws_with_callback(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_publish_sends_payload_to_ws_with_callback(self, ws, client):
         my_channel = "test-channel"
         my_data = {
             "key": "value",
@@ -517,17 +381,11 @@ class TestSocketClient(object):
             "data": data_text,
         }
 
-        client._internal_on_message(json.dumps(response_payload))
+        ws.on_message(json.dumps(response_payload))
 
         callback.assert_called_once_with(my_channel, error_text, data_text)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_publish_increments_cid(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_publish_increments_cid(self, ws, client):
         ws.send.assert_not_called()
 
         my_channel = "test-channel"
@@ -555,13 +413,7 @@ class TestSocketClient(object):
             call(json.dumps(expected_payload_2, sort_keys=True)),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_to_a_channel_sends_subscribe_payload(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_subscribing_to_a_channel_sends_subscribe_payload(self, ws, client):
         callback = MagicMock()
 
         my_channel_name = "test-channel"
@@ -582,13 +434,7 @@ class TestSocketClient(object):
 
         assert channel.status == Channel.PENDING
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_to_a_channel_twice_sends_subscribe_payload_once(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_subscribing_to_a_channel_twice_sends_subscribe_payload_once(self, ws, client):
         callback_1 = MagicMock()
         callback_2 = MagicMock()
 
@@ -611,13 +457,7 @@ class TestSocketClient(object):
 
         assert channel_1.status == Channel.PENDING
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_to_a_channel_calls_the_callback_on_publish(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_subscribing_to_a_channel_calls_the_callback_on_publish(self, ws, client):
         callback = MagicMock()
 
         my_channel_name = "test-channel"
@@ -636,17 +476,11 @@ class TestSocketClient(object):
             }
         }
 
-        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
+        ws.on_message(json.dumps(incoming_message, sort_keys=True))
 
         callback.assert_called_once_with(my_channel_name, my_data)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload(self, ws, client):
         callback = MagicMock()
 
         my_channel_name = "test-channel"
@@ -680,13 +514,7 @@ class TestSocketClient(object):
             call(json.dumps(unsubscribe_payload, sort_keys=True)),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload_after_all_unsubscribes(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_unsubscribing_from_a_channel_sends_unsubscribe_payload_after_all_unsubscribes(self, ws, client):
         callback_1 = MagicMock()
         callback_2 = MagicMock()
 
@@ -729,13 +557,7 @@ class TestSocketClient(object):
             call(json.dumps(unsubscribe_payload, sort_keys=True)),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_from_a_channel_means_callback_will_not_be_called_again(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_unsubscribing_from_a_channel_means_callback_will_not_be_called_again(self, ws, client):
         callback = MagicMock()
 
         my_channel = "test-channel"
@@ -752,22 +574,16 @@ class TestSocketClient(object):
             },
         }
 
-        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
+        ws.on_message(json.dumps(incoming_message, sort_keys=True))
         callback.assert_called_once_with(my_channel, my_data)
 
         client.unsubscribe(my_channel, callback)
 
         # The previous call still exists, but no new calls should have been made
-        client._internal_on_message(json.dumps(incoming_message, sort_keys=True))
+        ws.on_message(json.dumps(incoming_message, sort_keys=True))
         callback.assert_called_once_with(my_channel, my_data)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_then_resubscribing_to_a_channel_resends_subscription_payload(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
-
+    def test_unsubscribing_then_resubscribing_to_a_channel_resends_subscription_payload(self, ws, client):
         callback = MagicMock()
 
         my_channel_name = "test-channel"
@@ -807,12 +623,7 @@ class TestSocketClient(object):
             call(json.dumps(second_subscribe_payload, sort_keys=True)),
         ])
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_calls_on_subscribe_after_successful_subscription(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
+    def test_subscribing_calls_on_subscribe_after_successful_subscription(self, ws, client):
         on_subscribe_callback = MagicMock()
         client.on_subscribe(on_subscribe_callback)
 
@@ -829,18 +640,13 @@ class TestSocketClient(object):
             "rid": 1,
         }
 
-        client._internal_on_message(json.dumps(successful_subscription_payload, sort_keys=True))
+        ws.on_message(json.dumps(successful_subscription_payload, sort_keys=True))
 
         assert channel.status == Channel.SUBSCRIBED
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_calls_on_unsubscribe_immediately(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
+    def test_unsubscribing_calls_on_unsubscribe_immediately(self, client):
         on_unsubscribe_callback = MagicMock()
         client.on_unsubscribe(on_unsubscribe_callback)
 
@@ -853,12 +659,7 @@ class TestSocketClient(object):
 
         on_unsubscribe_callback.assert_called_once_with(client, channel_name)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_subscribing_calls_on_subscribe_only_for_first_event(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
+    def test_subscribing_calls_on_subscribe_only_for_first_event(self, ws, client):
         on_subscribe_callback = MagicMock()
         client.on_subscribe(on_subscribe_callback)
 
@@ -874,16 +675,11 @@ class TestSocketClient(object):
             "rid": 1,
         }
 
-        client._internal_on_message(json.dumps(successful_subscription_payload, sort_keys=True))
+        ws.on_message(json.dumps(successful_subscription_payload, sort_keys=True))
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 
-    @mock.patch('scclient.socket_client.WebSocketApp')
-    def test_unsubscribing_calls_on_unsubscribe_only_after_last_event(self, socket_app):
-        ws = Mock(WebSocketApp)
-        socket_app.return_value = ws
-
-        client = SocketClient("test_url")
+    def test_unsubscribing_calls_on_unsubscribe_only_after_last_event(self, client):
         on_unsubscribe_callback = MagicMock()
         client.on_unsubscribe(on_unsubscribe_callback)
 
