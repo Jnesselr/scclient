@@ -432,7 +432,7 @@ class TestSocketClient(object):
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
         callback.assert_not_called()
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
     def test_subscribing_to_a_channel_twice_sends_subscribe_payload_once(self, ws, client):
         callback_1 = MagicMock()
@@ -455,7 +455,7 @@ class TestSocketClient(object):
         ws.send.assert_called_once_with(json.dumps(expected_payload, sort_keys=True))
         callback_1.assert_not_called()
 
-        assert channel_1.status == Channel.PENDING
+        assert channel_1.state == Channel.PENDING
 
     def test_subscribing_to_a_channel_calls_the_callback_on_publish(self, ws, client):
         callback = MagicMock()
@@ -487,12 +487,12 @@ class TestSocketClient(object):
         channel = client.subscribe(my_channel_name, callback)
 
         assert my_channel_name in client.channels
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         client.unsubscribe(my_channel_name, callback)
 
         assert my_channel_name in client.channels
-        assert channel.status == Channel.UNSUBSCRIBED
+        assert channel.state == Channel.UNSUBSCRIBED
 
         subscribe_payload = {
             "event": "#subscribe",
@@ -522,7 +522,7 @@ class TestSocketClient(object):
         channel = client.subscribe(my_channel_name, callback_1)
         client.subscribe(my_channel_name, callback_2)
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         subscribe_payload = {
             "event": "#subscribe",
@@ -536,14 +536,14 @@ class TestSocketClient(object):
 
         client.unsubscribe(my_channel_name, callback_1)
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         # Still just the one call
         ws.send.assert_called_once_with(json.dumps(subscribe_payload, sort_keys=True))
 
         client.unsubscribe(my_channel_name, callback_2)
 
-        assert channel.status == Channel.UNSUBSCRIBED
+        assert channel.state == Channel.UNSUBSCRIBED
 
         unsubscribe_payload = {
             "event": "#unsubscribe",
@@ -589,15 +589,15 @@ class TestSocketClient(object):
         my_channel_name = "test-channel"
         channel = client.subscribe(my_channel_name, callback)
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         client.unsubscribe(my_channel_name, callback)
 
-        assert channel.status == Channel.UNSUBSCRIBED
+        assert channel.state == Channel.UNSUBSCRIBED
 
         client.subscribe(my_channel_name, callback)
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         channel_data = {
             "channel": my_channel_name,
@@ -634,7 +634,7 @@ class TestSocketClient(object):
 
         on_subscribe_callback.assert_not_called()
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         successful_subscription_payload = {
             "rid": 1,
@@ -642,7 +642,7 @@ class TestSocketClient(object):
 
         ws.on_message(json.dumps(successful_subscription_payload, sort_keys=True))
 
-        assert channel.status == Channel.SUBSCRIBED
+        assert channel.state == Channel.SUBSCRIBED
 
         on_subscribe_callback.assert_called_once_with(client, channel_name)
 
@@ -669,7 +669,7 @@ class TestSocketClient(object):
         channel = client.subscribe(channel_name, MagicMock())
         client.subscribe(channel_name, MagicMock())
 
-        assert channel.status == Channel.PENDING
+        assert channel.state == Channel.PENDING
 
         successful_subscription_payload = {
             "rid": 1,
@@ -709,4 +709,12 @@ class TestSocketClient(object):
 
         ws.on_message(json.dumps(failed_subscription_payload))
 
-        assert channel.status == Channel.UNSUBSCRIBED
+        assert channel.state == Channel.UNSUBSCRIBED
+
+    def test_accessing_the_channels_object_with_undefined_channel_creates_a_new_channel(self, client):
+        channel_name = "my-channel"
+        assert channel_name not in client.channels
+
+        channel = client.channels[channel_name]
+
+        assert channel.state == Channel.PENDING

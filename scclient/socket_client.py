@@ -1,3 +1,4 @@
+import collections
 import json
 import time
 from threading import Lock, Thread
@@ -8,17 +9,37 @@ from scclient.channel import Channel
 from scclient.event_listener import EventListener
 
 
-class ChannelWrapper(object):
-    def __init__(self):
-        self._status_change = EventListener()
-        self._channel = Channel(self._status_change.listener)
+class ChannelsRepository(collections.Mapping):
+    def __init__(self, new_channel_function):
+        self._channels = {}
+        self._new_channel_function = new_channel_function
+        self._lock = Lock()
 
-    @property
-    def channel(self):
-        return self._channel
+    def __getitem__(self, key):
+        with self._lock:
+            if key not in self._channels:
+                self._channels[key] = self._new_channel_function(key)
+        return self._channels[key]
 
-    def set_state(self, state):
-        self._status_change.emit(state)
+    def __contains__(self, key):
+        return self._channels.__contains__(key)
+
+    def __len__(self):
+        return len(self._channels)
+
+    def __iter__(self):
+        return self._channels.__iter__()
+
+
+class CallbackWrapper(object):
+    def __init__(self, name, callback):
+        self.name = name
+        self.callback = callback
+
+    def __call__(self, message_object):
+        error = message_object["error"] if "error" in message_object else None
+        data = message_object["data"] if "data" in message_object else None
+        self.callback(self.name, error, data)
 
 
 class SocketClient(object):
@@ -38,10 +59,9 @@ class SocketClient(object):
         self._id = None
         self._auth_token = None
 
-        self._event_based_callbacks = {}
-        self._event_based_callback_lock = Lock()
+        self._event_based_callbacks = collections.defaultdict(set)
 
-        self._id_based_callbacks = {}
+        self._id_based_callbacks = collections.defaultdict(list)
         self._on_connect_event = EventListener()
         self._on_disconnect_event = EventListener()
         self._on_subscribe_event = EventListener()
@@ -50,9 +70,13 @@ class SocketClient(object):
         self._reconnect_enabled = bool(reconnect_enabled)
         self._reconnect_delay = float(reconnect_delay)
 
-        self._subscriptions = {}
-        self._channels = {}
-        self._subscription_lock = Lock()
+        self._repository = ChannelsRepository(self._new_channel)
+
+    def _new_channel(self, name):
+        return Channel(name=name,
+                       client=self,
+                       on_subscribe=lambda: self._on_subscribe_event(self, name),
+                       on_unsubscribe=lambda: self._on_unsubscribe_event(self, name))
 
     @property
     def id(self):
@@ -76,7 +100,7 @@ class SocketClient(object):
 
     @property
     def channels(self):
-        return dict(map(lambda key: (key, self._channels[key].channel), self._channels))
+        return self._repository
 
     @property
     def on_connect(self):
@@ -116,16 +140,12 @@ class SocketClient(object):
             cid = self._get_next_cid()
             payload["cid"] = cid
 
-            self._id_based_callbacks[cid] = (event, callback)
+            self._id_based_callbacks[cid].append(CallbackWrapper(event, callback))
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
     def on(self, event, callback):
-        with self._event_based_callback_lock:
-            if event not in self._event_based_callbacks:
-                self._event_based_callbacks[event] = set()
-
-            self._event_based_callbacks[event].add(callback)
+        self._event_based_callbacks[event].add(callback)
 
     def publish(self, channel, data, callback=None):
         cid = self._get_next_cid()
@@ -139,74 +159,16 @@ class SocketClient(object):
         }
 
         if callback is not None:
-            self._id_based_callbacks[cid] = (channel, callback)
+            self._id_based_callbacks[cid].append(CallbackWrapper(channel, callback))
 
         self._ws.send(json.dumps(payload, sort_keys=True))
 
     def subscribe(self, channel_name, callback):
-        send_subscribe_payload = False
-
-        with self._subscription_lock:
-            if channel_name not in self._subscriptions:
-                self._subscriptions[channel_name] = set()
-                send_subscribe_payload = True
-
-            if channel_name not in self._channels:
-                self._channels[channel_name] = ChannelWrapper()
-
-            self._subscriptions[channel_name].add(callback)
-
-        if send_subscribe_payload:
-            self._channels[channel_name].set_state(Channel.PENDING)
-
-            cid = self._get_next_cid()
-
-            payload = {
-                "event": "#subscribe",
-                "data": {
-                    "channel": channel_name,
-                },
-                "cid": cid,
-            }
-
-            def callback(name, error, data):
-                if error is not None:
-                    self._channels[name].set_state(Channel.UNSUBSCRIBED)
-                else:
-                    self._channels[name].set_state(Channel.SUBSCRIBED)
-
-                self._on_subscribe_event(self, name)
-
-            self._id_based_callbacks[cid] = (channel_name, callback)
-
-            self._ws.send(json.dumps(payload, sort_keys=True))
-
-        return self._channels[channel_name].channel
+        self._repository[channel_name].subscribe(callback)
+        return self._repository[channel_name]
 
     def unsubscribe(self, channel_name, callback):
-        send_unsubscribe_payload = False
-
-        with self._subscription_lock:
-            self._subscriptions[channel_name].remove(callback)
-
-            if len(self._subscriptions[channel_name]) == 0:
-                del self._subscriptions[channel_name]
-                send_unsubscribe_payload = True
-
-                channel_wrapper = self._channels[channel_name]
-                channel_wrapper.set_state(Channel.UNSUBSCRIBED)
-
-        if send_unsubscribe_payload:
-            payload = {
-                "event": "#unsubscribe",
-                "data": {
-                    "channel": channel_name,
-                },
-            }
-
-            self._ws.send(json.dumps(payload, sort_keys=True))
-
-            self._on_unsubscribe_event(self, channel_name)
+        self._repository[channel_name].unsubscribe(callback)
 
     def _get_next_cid(self):
         with self._cid_lock:
@@ -235,7 +197,8 @@ class SocketClient(object):
             "cid": cid,
         }
 
-        self._id_based_callbacks[cid] = (handshake_event_name, self._internal_handshake_response)
+        callback_wrapper = CallbackWrapper(handshake_event_name, self._internal_handshake_response)
+        self._id_based_callbacks[cid].append(callback_wrapper)
         self._ws.send(json.dumps(handshake_object, sort_keys=True))
 
     def _internal_handshake_response(self, event_name, error, response):
@@ -257,27 +220,14 @@ class SocketClient(object):
 
         message_object = json.loads(message)
         if "rid" in message_object and message_object["rid"] in self._id_based_callbacks:
-            callback_tuple = self._id_based_callbacks[message_object["rid"]]
-            name = callback_tuple[0]  # Either the event or channel name
-            callback = callback_tuple[1]
-
-            error = message_object["error"] if "error" in message_object else None
-            data = message_object["data"] if "data" in message_object else None
-            callback(name, error, data)
+            for callback_wrapper in self._id_based_callbacks[message_object["rid"]]:
+                callback_wrapper(message_object)
 
         if "event" not in message_object:
             return
 
         event_name = message_object["event"]
         message_data = message_object["data"] if "data" in message_object else None
-
-        if event_name == "#publish":
-            channel = message_data["channel"]
-            channel_data = message_data["data"]
-
-            subscriptions = self._subscriptions[channel] if channel in self._subscriptions else set()
-            for subscription in subscriptions:
-                subscription(channel, channel_data)
 
         if event_name in self._event_based_callbacks:
             for callback in self._event_based_callbacks[event_name]:
