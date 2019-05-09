@@ -40,7 +40,7 @@ wrappers = {}
 
 
 def _get_wrapper(request):
-    name = f"{request.node.instance}_{request.node.name}"
+    name = str(request.node.instance) + "_" + request.node.name
     if name not in wrappers:
         wrappers[name] = SocketWrapper()
 
