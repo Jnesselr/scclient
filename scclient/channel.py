@@ -20,6 +20,8 @@ class Channel(object):
         self._subscriptions = set()
         self._subscription_lock = Lock()
 
+        self._client.on("#publish", self._publish_callback)
+
     @property
     def state(self):
         return self._state
@@ -49,7 +51,6 @@ class Channel(object):
     def subscribe(self, callback):
         with self._subscription_lock:
             self._subscriptions.add(callback)
-            self._client.on("#publish", self._publish_callback)
 
             if len(self._subscriptions) > 1:
                 return

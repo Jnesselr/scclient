@@ -39,7 +39,8 @@ class SocketWrapper(object):
 wrappers = {}
 
 
-def _get_wrapper(name):
+def _get_wrapper(request):
+    name = f"{request.node.instance}_{request.node.name}"
     if name not in wrappers:
         wrappers[name] = SocketWrapper()
 
@@ -48,9 +49,9 @@ def _get_wrapper(name):
 
 @pytest.fixture
 def ws(request):
-    return _get_wrapper(request.node.name).ws
+    return _get_wrapper(request).ws
 
 
 @pytest.fixture
 def client(request):
-    return _get_wrapper(request.node.name).client
+    return _get_wrapper(request).client
